@@ -117,7 +117,7 @@ def setup(args):
     cfg = get_cfg()
     cfg.merge_from_file(args.config_file)
     cfg.merge_from_list(args.opts)
-    cfg.freeze()
+    # cfg.freeze()
     default_setup(cfg, args)
     return cfg
 
@@ -125,17 +125,43 @@ def setup(args):
 def main(args):
     cfg = setup(args)
 
+    if cfg.IPEX:
+        import intel_pytorch_extension as ipex
+
+    cfg.eval_only = False
+    cfg.profile = args.profile
+    cfg.channels_last = args.channels_last
+    cfg.ipex = args.ipex
+    cfg.jit = args.jit
+    cfg.precision = args.precision
+    cfg.num_warmup = args.num_warmup
+    cfg.num_iters = args.num_iters
     if args.eval_only:
+        cfg.eval_only = True
         model = Trainer.build_model(cfg)
-        DetectionCheckpointer(model, save_dir=cfg.OUTPUT_DIR).resume_or_load(
-            cfg.MODEL.WEIGHTS, resume=args.resume
-        )
-        res = Trainer.test(cfg, model)
-        if comm.is_main_process():
-            verify_results(cfg, res)
-        if cfg.TEST.AUG.ENABLED:
-            res.update(Trainer.test_with_TTA(cfg, model))
-        return res
+        if cfg.IPEX:
+            model.to(ipex.DEVICE)
+        if cfg.precision == 'bfloat16':
+            with torch.cpu.amp.autocast(enabled=True, dtype=torch.bfloat16):
+                DetectionCheckpointer(model, save_dir=cfg.OUTPUT_DIR).resume_or_load(
+                    cfg.MODEL.WEIGHTS, resume=args.resume
+                )
+                res = Trainer.test(cfg, model)
+                if comm.is_main_process():
+                    verify_results(cfg, res)
+                if cfg.TEST.AUG.ENABLED:
+                    res.update(Trainer.test_with_TTA(cfg, model))
+        else:
+            DetectionCheckpointer(model, save_dir=cfg.OUTPUT_DIR).resume_or_load(
+                cfg.MODEL.WEIGHTS, resume=args.resume
+            )
+            res = Trainer.test(cfg, model)
+            if comm.is_main_process():
+                verify_results(cfg, res)
+            if cfg.TEST.AUG.ENABLED:
+                res.update(Trainer.test_with_TTA(cfg, model))
+            return res
+        exit()
 
     """
     If you'd like to do anything fancier than the standard training logic,

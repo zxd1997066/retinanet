@@ -17,6 +17,12 @@ from .config import CfgNode as CN
 
 _C = CN()
 
+# BF16
+_C.BF16 = False
+# IPEX
+_C.IPEX = False
+_C.NHWC = True
+
 # The version number, to upgrade from old configs to new ones if any
 # changes happen. It's recommended to keep a VERSION in your config file.
 _C.VERSION = 2
@@ -25,7 +31,7 @@ _C.MODEL = CN()
 _C.MODEL.LOAD_PROPOSALS = False
 _C.MODEL.MASK_ON = False
 _C.MODEL.KEYPOINT_ON = False
-_C.MODEL.DEVICE = "cuda"
+_C.MODEL.DEVICE = "cpu"
 _C.MODEL.META_ARCHITECTURE = "GeneralizedRCNN"
 
 # Path (possibly with schema like catalog:// or detectron2://) to a checkpoint file
@@ -146,6 +152,7 @@ _C.MODEL.FPN.NORM = ""
 
 # Types for fusing the FPN top-down and lateral features. Can be either "sum" or "avg"
 _C.MODEL.FPN.FUSE_TYPE = "sum"
+_C.arch= ""
 
 
 # ---------------------------------------------------------------------------- #

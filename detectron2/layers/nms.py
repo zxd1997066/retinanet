@@ -14,7 +14,7 @@ def batched_nms(boxes, scores, idxs, iou_threshold):
     # TODO may need better strategy.
     # Investigate after having a fully-cuda NMS op.
     if len(boxes) < 40000:
-        return box_ops.batched_nms(boxes, scores, idxs, iou_threshold)
+        return box_ops.batched_nms(boxes, scores.float(), idxs, iou_threshold)
 
     result_mask = scores.new_zeros(scores.size(), dtype=torch.bool)
     for id in torch.unique(idxs).cpu().tolist():

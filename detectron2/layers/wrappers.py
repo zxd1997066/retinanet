@@ -11,7 +11,7 @@ is implemented
 import math
 import torch
 from torch.nn.modules.utils import _ntuple
-
+from detectron2.config import get_cfg
 TORCH_VERSION = tuple(int(x) for x in torch.__version__.split(".")[:2])
 
 
@@ -58,6 +58,7 @@ class Conv2d(torch.nn.Conv2d):
 
         self.norm = norm
         self.activation = activation
+        self.cfg = get_cfg()
 
     def forward(self, x):
         if x.numel() == 0 and self.training:
@@ -66,7 +67,8 @@ class Conv2d(torch.nn.Conv2d):
                 self.norm, torch.nn.SyncBatchNorm
             ), "SyncBatchNorm does not support empty inputs!"
 
-        if x.numel() == 0 and TORCH_VERSION <= (1, 4):
+        # if x.numel() == 0 and TORCH_VERSION <= (1, 4):
+        if x.numel() == 0:
             assert not isinstance(
                 self.norm, torch.nn.GroupNorm
             ), "GroupNorm does not support empty inputs in PyTorch <=1.4!"
@@ -89,8 +91,12 @@ class Conv2d(torch.nn.Conv2d):
                 return empty + _dummy
             else:
                 return empty
-
-        x = super().forward(x)
+        #x = super().forward(x)
+        if self.cfg.IPEX:
+            import intel_pytorch_extension as ipex
+            x = super().forward(x.to(ipex.DEVICE))
+        else:
+            x = super().forward(x)
         if self.norm is not None:
             x = self.norm(x)
         if self.activation is not None:

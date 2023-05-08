@@ -1,6 +1,7 @@
 # Copyright (c) Facebook, Inc. and its affiliates. All Rights Reserved
 import datetime
 import logging
+import os
 import time
 from collections import OrderedDict
 from contextlib import contextmanager
@@ -80,7 +81,27 @@ class DatasetEvaluators(DatasetEvaluator):
         return results
 
 
-def inference_on_dataset(model, data_loader, evaluator):
+def save_profile_result(filename, table):
+    import xlsxwriter
+    workbook = xlsxwriter.Workbook(filename)
+    worksheet = workbook.add_worksheet()
+    keys = ["Name", "Self CPU total %", "Self CPU total", "CPU total %" , "CPU total", \
+            "CPU time avg", "Number of Calls"]
+    for j in range(len(keys)):
+        worksheet.write(0, j, keys[j])
+
+    lines = table.split("\n")
+    for i in range(3, len(lines)-4):
+        words = lines[i].split(" ")
+        j = 0
+        for word in words:
+            if not word == "":
+                worksheet.write(i-2, j, word)
+                j += 1
+    workbook.close()
+
+
+def inference_on_dataset(cfg, model, data_loader, evaluator):
     """
     Run model on the data_loader and evaluate the metrics with evaluator.
     Also benchmark the inference speed of `model.forward` accurately.
@@ -110,20 +131,67 @@ def inference_on_dataset(model, data_loader, evaluator):
         evaluator = DatasetEvaluators([])
     evaluator.reset()
 
-    num_warmup = min(5, total - 1)
+    num_warmup = cfg.num_warmup
+    num_iters = cfg.num_iters
     start_time = time.perf_counter()
     total_compute_time = 0
+    sum_time = 0.0
+    sum_sample = 0
+    batch_time_list =[]
     with inference_context(model), torch.no_grad():
+        model.eval()
+        if cfg.ipex:
+            print("---- Running with IPEX")
+            import intel_extension_for_pytorch as ipex
+            if cfg.precision == "bfloat16":
+                model = ipex.optimize(model, dtype=torch.bfloat16, inplace=True)
+            else:
+                model = ipex.optimize(model, dtype=torch.float32, inplace=True)
         for idx, inputs in enumerate(data_loader):
+            if num_iters != 0 and idx > num_iters:
+                break
+            if cfg.jit and idx == 0:
+                try:
+                    model = torch.jit.trace(model, inputs, check_trace=False)
+                    print("---- Use trace model.")
+                except:
+                    model = torch.jit.script(model)
+                    print("---- Use script model.")
+                if cfg.ipex:
+                    model = torch.jit.freeze(model)
             if idx == num_warmup:
                 start_time = time.perf_counter()
                 total_compute_time = 0
-
             start_compute_time = time.perf_counter()
-            outputs = model(inputs)
+            tic = time.time()
+            if cfg.profile:
+                with torch.profiler.profile(activities=[torch.profiler.ProfilerActivity.CPU], record_shapes=True) as prof:
+                    outputs = model(inputs)
+                if idx == int(num_iters/2):
+                    import pathlib
+                    timeline_dir = str(pathlib.Path.cwd()) + '/timeline/'
+                    if not os.path.exists(timeline_dir):
+                        os.makedirs(timeline_dir)
+                    timeline_file = timeline_dir + 'timeline-' + str(torch.backends.quantized.engine) + '-' + \
+                                "retinanet" + str(idx) + '-' + str(os.getpid()) + '.json'
+                    print(timeline_file)
+                    prof.export_chrome_trace(timeline_file)
+                    table_res = prof.key_averages().table(sort_by="cpu_time_total")
+                    print(table_res)
+                    # self.save_profile_result(timeline_dir + torch.backends.quantized.engine + "_result_average.xlsx", table_res)
+            else:
+                outputs = model(inputs)
+            toc = time.time()
             if torch.cuda.is_available():
                 torch.cuda.synchronize()
             total_compute_time += time.perf_counter() - start_compute_time
+            print("Iteration: {}, inference time: {} sec.".format(idx, toc - tic), flush=True)
+            if idx >= num_warmup:
+                batch_time_list.append((toc - tic) * 1000)
+                sum_time += (toc - tic)
+                sum_sample += 1
+            if cfg.eval_only:
+                continue
             evaluator.process(inputs, outputs)
 
             iters_after_start = idx + 1 - num_warmup * int(idx >= num_warmup)
@@ -138,11 +206,26 @@ def inference_on_dataset(model, data_loader, evaluator):
                     ),
                     n=5,
                 )
+    if cfg.eval_only:
+        print("\n", "-"*20, "Summary", "-"*20)
+        latency = sum_time / sum_sample * 1000
+        throughput = sum_sample / sum_time
+        print("inference latency:\t {:.3f} ms".format(latency))
+        print("inference Throughput:\t {:.2f} samples/s".format(throughput))
+        # P50
+        batch_time_list.sort()
+        p50_latency = batch_time_list[int(len(batch_time_list) * 0.50) - 1]
+        p90_latency = batch_time_list[int(len(batch_time_list) * 0.90) - 1]
+        p99_latency = batch_time_list[int(len(batch_time_list) * 0.99) - 1]
+        print('Latency P50:\t %.3f ms\nLatency P90:\t %.3f ms\nLatency P99:\t %.3f ms\n'\
+                % (p50_latency, p90_latency, p99_latency))
 
+        exit()
     # Measure the time only for this worker (before the synchronization barrier)
     total_time = time.perf_counter() - start_time
     total_time_str = str(datetime.timedelta(seconds=total_time))
     # NOTE this format is parsed by grep
+
     logger.info(
         "Total inference time: {} ({:.6f} s / img per device, on {} devices)".format(
             total_time_str, total_time / (total - num_warmup), num_devices
@@ -152,6 +235,11 @@ def inference_on_dataset(model, data_loader, evaluator):
     logger.info(
         "Total inference pure compute time: {} ({:.6f} s / img per device, on {} devices)".format(
             total_compute_time_str, total_compute_time / (total - num_warmup), num_devices
+        )
+    )
+    logger.info(
+        "inference Throughput: {:.2f} imgs/s, on {} devices)".format(
+            (total - num_warmup) / total_compute_time, num_devices
         )
     )
 

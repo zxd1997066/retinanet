@@ -12,6 +12,7 @@ from ..box_regression import Box2BoxTransform
 from ..matcher import Matcher
 from .build import PROPOSAL_GENERATOR_REGISTRY
 from .rpn_outputs import RPNOutputs, find_top_rpn_proposals
+from detectron2.config import get_cfg
 
 RPN_HEAD_REGISTRY = Registry("RPN_HEAD")
 """
@@ -42,6 +43,7 @@ class StandardRPNHead(nn.Module):
 
     def __init__(self, cfg, input_shape: List[ShapeSpec]):
         super().__init__()
+        self.cfg = get_cfg()
 
         # Standard RPN is shared across levels:
         in_channels = [s.channels for s in input_shape]
@@ -79,7 +81,13 @@ class StandardRPNHead(nn.Module):
         pred_objectness_logits = []
         pred_anchor_deltas = []
         for x in features:
-            t = F.relu(self.conv(x))
+            if self.cfg.IPEX:
+               import intel_pytorch_extension as ipex
+               x = x.to(ipex.DEVICE)
+               t = F.relu(self.conv(x))
+               t= t.to(ipex.DEVICE)
+            else:
+               t = F.relu(self.conv(x))
             pred_objectness_logits.append(self.objectness_logits(t))
             pred_anchor_deltas.append(self.anchor_deltas(t))
         return pred_objectness_logits, pred_anchor_deltas

@@ -60,7 +60,15 @@ def default_argument_parser():
         help="whether to attempt to resume from the checkpoint directory",
     )
     parser.add_argument("--eval-only", action="store_true", help="perform evaluation only")
+    parser.add_argument("--ipex", action="store_true", help="ipex")
+    parser.add_argument("--jit", action="store_true", help="jit")
+    parser.add_argument("--profile", action="store_true", help="profile")
     parser.add_argument("--num-gpus", type=int, default=1, help="number of gpus *per machine*")
+    parser.add_argument("--arch", type=str, default='RetinaNet')
+    parser.add_argument("--channels-last", type=int, default=0)
+    parser.add_argument("--num-warmup", type=int, default=5)
+    parser.add_argument("--num-iters", type=int, default=0)
+    parser.add_argument("--precision", type=str, default='float32')
     parser.add_argument("--num-machines", type=int, default=1)
     parser.add_argument(
         "--machine-rank", type=int, default=0, help="the rank of this machine (unique per machine)"
@@ -494,7 +502,12 @@ Alternatively, you can call evaluation functions yourself (see Colab balloon tut
                     )
                     results[dataset_name] = {}
                     continue
-            results_i = inference_on_dataset(model, data_loader, evaluator)
+            if cfg.channels_last:
+                model_oob = model
+                model_oob = model_oob.to(memory_format=torch.channels_last)
+                model = model_oob
+                print("---- Use channels last format.")
+            results_i = inference_on_dataset(cfg, model, data_loader, evaluator)
             results[dataset_name] = results_i
             if comm.is_main_process():
                 assert isinstance(

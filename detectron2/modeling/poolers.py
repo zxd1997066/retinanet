@@ -230,6 +230,6 @@ class ROIPooler(nn.Module):
         for level, (x_level, pooler) in enumerate(zip(x, self.level_poolers)):
             inds = torch.nonzero(level_assignments == level).squeeze(1)
             pooler_fmt_boxes_level = pooler_fmt_boxes[inds]
-            output[inds] = pooler(x_level, pooler_fmt_boxes_level)
+            output[inds] = pooler(x_level, pooler_fmt_boxes_level).to(dtype=dtype)
 
         return output
