@@ -12,6 +12,7 @@ function main {
     set_environment
     
     pip install -r ${workload_dir}/requirements.txt
+    pip install Pillow==9.5.0
     # pip install --no-deps torchvision -f https://download.pytorch.org/whl/torch_stable.html
     pip install -e .
     if [ ! -e R-50.pkl ];then
