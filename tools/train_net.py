@@ -136,11 +136,15 @@ def main(args):
     cfg.precision = args.precision
     cfg.num_warmup = args.num_warmup
     cfg.num_iters = args.num_iters
+    cfg.compile = args.compile
+    cfg.backend = args.backend
     if args.eval_only:
         cfg.eval_only = True
         model = Trainer.build_model(cfg)
         if cfg.IPEX:
             model.to(ipex.DEVICE)
+        if cfg.compile:
+            model = torch.compile(model, backend=cfg.backend, options={"freezing": True})
         if cfg.precision == 'bfloat16':
             with torch.cpu.amp.autocast(enabled=True, dtype=torch.bfloat16):
                 DetectionCheckpointer(model, save_dir=cfg.OUTPUT_DIR).resume_or_load(
