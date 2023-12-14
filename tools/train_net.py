@@ -146,7 +146,7 @@ def main(args):
         if cfg.compile:
             model = torch.compile(model, backend=cfg.backend, options={"freezing": True})
         if cfg.precision == 'bfloat16':
-            with torch.cpu.amp.autocast(enabled=True, dtype=torch.bfloat16):
+            with torch.autocast(device_type="cuda" if torch.cuda.is_available() else "cpu", enabled=True, dtype=torch.bfloat16):
                 DetectionCheckpointer(model, save_dir=cfg.OUTPUT_DIR).resume_or_load(
                     cfg.MODEL.WEIGHTS, resume=args.resume
                 )
@@ -156,7 +156,7 @@ def main(args):
                 if cfg.TEST.AUG.ENABLED:
                     res.update(Trainer.test_with_TTA(cfg, model))
         elif cfg.precision == 'float16':
-            with torch.cpu.amp.autocast(enabled=True, dtype=torch.half):
+            with torch.autocast(device_type="cuda" if torch.cuda.is_available() else "cpu", enabled=True, dtype=torch.half):
                 DetectionCheckpointer(model, save_dir=cfg.OUTPUT_DIR).resume_or_load(
                     cfg.MODEL.WEIGHTS, resume=args.resume
                 )
