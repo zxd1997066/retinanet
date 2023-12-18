@@ -32,7 +32,7 @@ function main {
         # pre run
         python tools/train_net.py --config-file configs/COCO-InstanceSegmentation/mask_rcnn_R_50_FPN_1x.yaml \
             --arch RetinaNet --eval-only --num-warmup 1 --num-iters 2 --precision ${precision} \
-            --channels-last ${channels_last} MODEL.DEVICE cpu || true
+            --channels-last ${channels_last} MODEL.DEVICE ${device} || true
         #
         for batch_size in ${batch_size_list[@]}
         do
@@ -77,7 +77,7 @@ function generate_core {
                 --precision ${precision} \
                 --channels-last ${channels_last} \
                 ${addtion_options} \
-                MODEL.DEVICE cpu \
+                MODEL.DEVICE ${device} \
         > ${log_file} 2>&1 &  \n" |tee -a ${excute_cmd_file}
         if [ "${numa_nodes_use}" == "0" ];then
             break
