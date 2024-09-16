@@ -138,6 +138,11 @@ def main(args):
     cfg.num_iters = args.num_iters
     cfg.compile = args.compile
     cfg.backend = args.backend
+    cfg.triton_cpu = args.triton_cpu
+    if cfg.triton_cpu:
+        print("run with triton cpu backend")
+        import torch._inductor.config
+        torch._inductor.config.cpu_backend="triton"
     if args.eval_only:
         cfg.eval_only = True
         model = Trainer.build_model(cfg)
