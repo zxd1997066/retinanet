@@ -139,6 +139,7 @@ def main(args):
     cfg.compile = args.compile
     cfg.backend = args.backend
     cfg.triton_cpu = args.triton_cpu
+    import torch
     if cfg.triton_cpu:
         print("run with triton cpu backend")
         import torch._inductor.config
